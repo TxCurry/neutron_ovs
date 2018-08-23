@@ -64,6 +64,7 @@ class Connection(object):
     def __init__(self, connection=None, timeout=None,schema_name=None,
                  idl_class=None, idl_factory=None):
         self.idl = None
+        self.is_running = True
         self.timeout = timeout
         self.txns = TransactionQueue(1)
         self.lock = threading.Lock()
@@ -89,7 +90,7 @@ class Connection(object):
         return self.idl_class(self.connection, helper)
 
     @removals.removed_kwarg('table_name_list', **__rm_args)
-    def start(self, table_name_list=None):
+    def establish_connection(self, table_name_list=None):
         self._schema_filter = table_name_list
         with self.lock:
             if self.idl is not None:
@@ -121,7 +122,7 @@ class Connection(object):
             helper.register_all()
 
     def run(self):
-        while True:
+        while self.is_running:
             self.idl.wait(self.poller)
             self.poller.fd_wait(self.txns.alert_fileno, poller.POLLIN)
             self.poller.timer_wait(self.timeout * 1000)
@@ -142,21 +143,28 @@ class Connection(object):
     
     def db_list(self, table_name):
         table = self.idl.tables[table_name]
-	row = table.rows.values()[0]
+        row = table.rows.values()[0]
         columns = ['_uuid'] + list(table.columns.keys())
+        print(columns)
         for c in columns:
             print "%-30s: %s" % (c, idlutils.get_column_value(row, c))
 
 
     def get_table_name(self):
-        self.start()
         table_list = self.idl.tables.keys()
-	for i in range(len(table_list)):
+        for i in range(len(table_list)):
             print(table_list[i])
-        return table_list 
-
-#if __name__ == "__main__":
-    #ovsdb_connection = Connection(cfg.CONF.OVS.ovsdb_connection,cfg.CONF.ovs_vsctl_timeout,'Open_vSwitch')
-    #table_list = ovsdb_connection.get_table_name()
-    #print '\n'
-    #ovsdb_connection.db_list(table_list[0])
+        return table_list
+   
+        
+    def get_table_record(self, table_name, field):
+        table = self.idl.tables[table_name]
+        row = table.rows.values()[0]
+        columns = ['_uuid'] + list(table.columns.keys())
+        for c in columns:
+            if field == c:
+                print '%-30s: %s' % (c, idlutils.get_column_value(row, c))
+            
+ 
+    def disconnect(self):
+        self.is_running= False     
